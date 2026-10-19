@@ -37,7 +37,6 @@ fun ContactImportScreen(
     var drafts by remember { mutableStateOf<List<ContactDraft>>(emptyList()) }
     var review by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var countryCode by remember { mutableStateOf("+52") }
     var loading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf("") }
@@ -136,19 +135,18 @@ fun ContactImportScreen(
                 }, enabled = selected.isNotEmpty() && !loading) { Text("Review " + selected.size + " contacts") }
             }
         } else {
-            val duplicates = ContactNumbers.duplicatePhones(drafts, countryCode)
+            val duplicates = ContactNumbers.duplicatePhones(drafts)
             val valid = drafts.isNotEmpty() && drafts.all {
-                ContactNumbers.validName(it.name) && ContactNumbers.normalize(it.phone, countryCode) != null &&
+                ContactNumbers.validName(it.name) && ContactNumbers.normalize(it.phone, it.countryCode) != null &&
                     (it.email.isBlank() || android.util.Patterns.EMAIL_ADDRESS.matcher(it.email.trim()).matches())
             }
-            OutlinedTextField(countryCode, { countryCode = it.trim() }, label = { Text("Country code for local 10-digit numbers") },
-                supportingText = { Text("Mexico: +52 · US/Canada: +1. Explicit + numbers keep their country code.") },
-                enabled = !saving && results.isEmpty(), singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("Choose a country for each local number. Numbers with +1 or +52 keep their existing code.",
+                style = MaterialTheme.typography.bodySmall)
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(drafts, key = { it.id }) { draft ->
                     val result = results[draft.id]
                     val editable = !saving && result?.status !in listOf("added", "existing")
-                    val normalized = ContactNumbers.normalize(draft.phone, countryCode)
+                    val normalized = ContactNumbers.normalize(draft.phone, draft.countryCode)
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
                             OutlinedTextField(draft.name, { value -> drafts = drafts.map { if (it.id == draft.id) it.copy(name = value) else it } },
@@ -160,7 +158,7 @@ fun ContactImportScreen(
                                 phoneChoices.forEach { phone ->
                                     Row {
                                         RadioButton(selected = draft.phone == phone, onClick = {
-                                            drafts = drafts.map { if (it.id == draft.id) it.copy(phone = phone) else it }
+                                            drafts = drafts.map { if (it.id == draft.id) it.copy(phone = phone, countryCode = "") else it }
                                         })
                                         Text(phone, Modifier.padding(top = 12.dp))
                                     }
@@ -170,7 +168,26 @@ fun ContactImportScreen(
                                 label = { Text("Phone number") }, enabled = editable, singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                 isError = normalized == null, modifier = Modifier.fillMaxWidth())
-                            Text(normalized ?: "Enter a valid number with country code. Extensions are not supported.",
+                            if (ContactNumbers.hasInternationalPrefix(draft.phone)) {
+                                Text("Country code: " + ContactNumbers.existingCountryCode(draft.phone).ifBlank { "included in phone number" } +
+                                    " · To change it, edit the phone number above.", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                OutlinedTextField(draft.countryCode, { value ->
+                                    drafts = drafts.map { if (it.id == draft.id) it.copy(countryCode = value.trim()) else it }
+                                }, label = { Text("Country code for this contact") }, placeholder = { Text("Choose +1 or +52") },
+                                    enabled = editable, singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                    isError = draft.countryCode.isBlank(), modifier = Modifier.fillMaxWidth())
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(selected = draft.countryCode == "+1", enabled = editable, onClick = {
+                                        drafts = drafts.map { if (it.id == draft.id) it.copy(countryCode = "+1") else it }
+                                    }, label = { Text("US +1") })
+                                    FilterChip(selected = draft.countryCode == "+52", enabled = editable, onClick = {
+                                        drafts = drafts.map { if (it.id == draft.id) it.copy(countryCode = "+52") else it }
+                                    }, label = { Text("Mexico +52") })
+                                }
+                            }
+                            Text(normalized ?: "Choose this contact’s country code or enter a valid international number. Extensions are not supported.",
                                 style = MaterialTheme.typography.bodySmall)
                             OutlinedTextField(draft.email, { value -> drafts = drafts.map { if (it.id == draft.id) it.copy(email = value) else it } },
                                 label = { Text("Email (optional)") }, enabled = editable, singleLine = true,
@@ -198,7 +215,7 @@ fun ContactImportScreen(
                             try {
                                 val remaining = drafts.filter { results[it.id]?.status !in listOf("added", "existing") }
                                 for (chunk in remaining.chunked(20)) {
-                                    val payload = chunk.map { it.copy(phone = ContactNumbers.normalize(it.phone, countryCode)!!) }
+                                    val payload = chunk.map { it.copy(phone = ContactNumbers.normalize(it.phone, it.countryCode)!!) }
                                     val response = api.importContacts(payload)
                                     for (r in response) {
                                         if (r.index in chunk.indices) results = results + (chunk[r.index].id to r)

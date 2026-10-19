@@ -51,7 +51,7 @@ Version 1.2.0 adds **Add from phone contacts**. Deploy the matching backend firs
 
 1. Open the picker and grant Contacts access when requested. Denial leaves the rest of the app available; use the provided App settings link if Android stops offering the permission dialog.
 2. Search by name or number, check multiple contacts, or use **Select shown** (up to 100 per selection).
-3. Review the selected families. Choose one phone for contacts with multiple numbers, edit the head-of-family name, and optionally enter an email. Local ten-digit numbers default to Mexico (+52); change the country code or enter a full international number for other countries.
+3. Review the selected families. Choose one phone for contacts with multiple numbers, edit the head-of-family name, and optionally enter an email. Local ten-digit numbers start with no country code; choose US (+1) or Mexico (+52) separately for each contact, or enter a full international number.
 4. Tap **Add to roster** once. The app uploads only these reviewed entries in batches of 20 and reports added, already-existing, invalid, or unconfirmed entries.
 5. Return to the roster. New families are assigned to you and have their own invitation links; sending remains a separate action.
 
@@ -69,3 +69,11 @@ In the birthday.invitation checkout, switch to main, pull the latest changes and
 run `deploy.bat` on Windows or `./deploy.sh` on Linux. Retry from the existing app
 after deployment. Version 1.2.1 displays the HTTP code and deployment guidance
 instead of the generic interrupted-import message.
+
+### Mixed US and Mexico contacts
+
+Contact review preserves explicit +1/+52 numbers (and 00 international prefixes).
+Local numbers start with an empty country code. Choose US +1 or Mexico +52 on
+each contact card, or type a code. There is no batch-wide country setting.
+Import requires resolving each local number first. To change a code already
+embedded in a phone number, edit that phone number directly.
