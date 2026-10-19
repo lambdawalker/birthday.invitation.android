@@ -6,6 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+class ApiException(val status: Int, message: String) : IllegalStateException(message)
+
 class Api(private val base: String, private val token: String) {
     init {
         val uri = URI(base)
@@ -30,7 +32,7 @@ class Api(private val base: String, private val token: String) {
                 c.connectTimeout = 15000
                 c.readTimeout = 20000
                 c.requestMethod = if (body == null) "GET" else "POST"
-                c.setRequestProperty("Authorization", "Bearer $token")
+                if (token.isNotBlank()) c.setRequestProperty("Authorization", "Bearer $token")
                 if (body != null) {
                     c.doOutput = true
                     c.setRequestProperty("Content-Type", "application/json")
@@ -48,12 +50,20 @@ class Api(private val base: String, private val token: String) {
                         JSONObject()
                     }
                 if (code !in 200..299)
-                    throw IllegalStateException(result.optString("error", "Error HTTP $code"))
+                    throw ApiException(code, result.optString("error", "HTTP error $code"))
                 result
             } finally {
                 c.disconnect()
             }
         }
+
+    suspend fun signIn(username: String, pin: String): String =
+        request("/user/login", JSONObject().put("username", SignIn.username(username)).put("pin", pin))
+            .getString("token")
+
+    suspend fun signOut() {
+        request("/user/logout", JSONObject())
+    }
 
     suspend fun families(): List<Family> {
         val a = request("/families").getJSONArray("families")
