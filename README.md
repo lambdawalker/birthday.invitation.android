@@ -44,3 +44,19 @@ After logout, reinstall, expiry, or a locked PIN, the administrator selects **Ge
 When a session is revoked/replaced, the app returns to sign-in and preserves pending sending results. Sign in with the same username/server to recover them; switching identities is blocked while results are pending. A successful PIN exchange is saved before refreshing families so a network failure during refresh does not discard the new login. Logout revokes the server session and requires synchronized results. A reinstall loses local unsynchronized results: reconcile uncertain attempts in the web report before sending again.
 
 The PIN may have been consumed if a network failure hides a successful sign-in response. Generate another PIN in that case. Never share the administrator key with app users.
+
+
+## Add multiple contacts to the roster
+Version 1.2.0 adds **Add from phone contacts**. Deploy the matching backend first, then install the updated app.
+
+1. Open the picker and grant Contacts access when requested. Denial leaves the rest of the app available; use the provided App settings link if Android stops offering the permission dialog.
+2. Search by name or number, check multiple contacts, or use **Select shown** (up to 100 per selection).
+3. Review the selected families. Choose one phone for contacts with multiple numbers, edit the head-of-family name, and optionally enter an email. Local ten-digit numbers default to Mexico (+52); change the country code or enter a full international number for other countries.
+4. Tap **Add to roster** once. The app uploads only these reviewed entries in batches of 20 and reports added, already-existing, invalid, or unconfirmed entries.
+5. Return to the roster. New families are assigned to you and have their own invitation links; sending remains a separate action.
+
+Names and phone numbers are read locally on a worker thread, only after permission. Photos, notes, addresses, and contact emails are not read; emails in the review form are optional manual input. The address book and unselected contacts are not uploaded or persisted by the picker. Selection remains in memory, so rotation/process termination can close it; reselect and retry safely after checking the roster.
+
+Duplicate numbers are preserved across all app users, including formatted and legacy Mexican +521 numbers. Existing families retain their name, assignment, RSVP and sending history. Shared phone numbers represent one family. After a network interruption, use **Retry remaining**; completed numbers are safely skipped on the backend. Unknown results must never be treated as permission to send an invitation.
+
+Unit tests cover number normalization, country selection, duplicates and names; Contacts-provider/OEM permission screens and physical-phone selection should be checked on the target phone.

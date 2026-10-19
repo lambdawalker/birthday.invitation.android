@@ -5,6 +5,7 @@ import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONArray
 
 class ApiException(val status: Int, message: String) : IllegalStateException(message)
 
@@ -65,6 +66,17 @@ class Api(private val base: String, private val token: String) {
         request("/user/logout", JSONObject())
     }
 
+    suspend fun importContacts(contacts: List<ContactDraft>): List<ContactImportResult> {
+        val body = JSONObject().put("contacts", JSONArray(contacts.map {
+            JSONObject().put("name", it.name.trim()).put("phone", it.phone).put("email", it.email.trim())
+        }))
+        val results = request("/families/import", body).getJSONArray("results")
+        return (0 until results.length()).map { i ->
+            val row = results.getJSONObject(i)
+            ContactImportResult(row.getInt("index"), row.getString("status"), row.optString("message"))
+        }
+    }
+
     suspend fun families(): List<Family> {
         val a = request("/families").getJSONArray("families")
         return (0 until a.length()).map { Family.from(a.getJSONObject(it)) }
@@ -90,3 +102,6 @@ class Api(private val base: String, private val token: String) {
             )
         )
 }
+
+
+data class ContactImportResult(val index: Int, val status: String, val message: String)

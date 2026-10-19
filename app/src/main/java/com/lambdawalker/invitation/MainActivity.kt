@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var local: LocalState
     private var families by mutableStateOf<List<Family>>(emptyList())
     private var connected by mutableStateOf(false)
+    private var contactsOpen by mutableStateOf(false)
     private var message by mutableStateOf("Ask the administrator for your username and a single-use PIN.")
     private var running by mutableStateOf(false)
     private var batchActive by mutableStateOf(false)
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::local.isInitialized) {
             pendingCount = local.pending().size
-            if (connected && !busy && !batchActive) task { refresh() }
+            if (connected && !busy && !batchActive && !contactsOpen) task { refresh() }
         }
     }
 
@@ -340,6 +341,21 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Screen() {
+        if (connected && contactsOpen) {
+            ContactImportScreen(api(), families.map { it.phone },
+                onDone = { summary ->
+                    contactsOpen = false
+                    task { refresh(); message = summary }
+                },
+                onUnauthorized = {
+                    contactsOpen = false
+                    connected = false
+                    online = false
+                    message = "Your session ended. Ask for a new PIN. Previously added contacts remain in the roster."
+                },
+            )
+            return
+        }
         if (!connected) {
             var base by remember { mutableStateOf(vault.base().ifBlank { "https://xitlaliabigail.com" }) }
             var username by remember { mutableStateOf("") }
@@ -423,6 +439,10 @@ class MainActivity : ComponentActivity() {
                 )
             }
             item { Card { Text(message, Modifier.padding(14.dp)) } }
+            item {
+                Button(onClick = { contactsOpen = true }, enabled = !busy && !batchActive,
+                    modifier = Modifier.fillMaxWidth()) { Text("Add from phone contacts") }
+            }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
