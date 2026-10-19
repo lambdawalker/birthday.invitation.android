@@ -11,8 +11,12 @@ import android.telephony.SubscriptionManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -32,7 +36,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var local: LocalState
     private var families by mutableStateOf<List<Family>>(emptyList())
     private var connected by mutableStateOf(false)
-    private var message by mutableStateOf("Conecta el teléfono desde el panel web.")
+    private var message by mutableStateOf("Ask the administrator for your username and a single-use PIN.")
     private var running by mutableStateOf(false)
     private var batchActive by mutableStateOf(false)
     private var reconcileDialog by mutableStateOf(false)
@@ -54,7 +58,7 @@ class MainActivity : ComponentActivity() {
 
     private fun api() = Api(vault.base(), vault.token())
 
-    private fun myId() = tokenHash(vault.token())
+    private fun myId() = SignIn.actorId(vault.token())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,7 +112,12 @@ class MainActivity : ComponentActivity() {
                 block()
             } catch (e: Exception) {
                 online = false
-                message = e.message ?: "No se pudo completar la operación"
+                if (e is ApiException && e.status == 401 && connected) {
+                    connected = false
+                    message = "Your session has ended. Ask the administrator for a new PIN and sign in with the same username."
+                } else {
+                    message = e.message ?: "Unable to complete the operation"
+                }
             } finally {
                 busy = false
                 pendingCount = local.pending().size
@@ -314,7 +323,13 @@ class MainActivity : ComponentActivity() {
                     }
                     if (running) message = "Lote completado"
                 } catch (e: Exception) {
-                    message = e.message ?: "Envío pausado"
+                    if (e is ApiException && e.status == 401) {
+                        connected = false
+                        online = false
+                        message = "Your session has ended. Ask the administrator for a new PIN."
+                    } else {
+                        message = e.message ?: "Sending paused"
+                    }
                 } finally {
                     running = false
                     batchActive = false
@@ -326,54 +341,68 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Screen() {
         if (!connected) {
-            var base by remember { mutableStateOf("https://xitlaliabigail.com") }
-            var token by remember { mutableStateOf("") }
+            var base by remember { mutableStateOf(vault.base().ifBlank { "https://xitlaliabigail.com" }) }
+            var username by remember { mutableStateOf("") }
+            var pin by remember { mutableStateOf("") }
+            var customServer by remember { mutableStateOf(false) }
             Column(
-                Modifier.fillMaxSize().padding(28.dp),
+                Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(28.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("ABI · 2 AÑOS", style = MaterialTheme.typography.labelLarge)
+                Text("ABI · INVITATIONS", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(20.dp))
-                Text(
-                    "Tu teléfono,\nparte de la aldea.",
-                    style = MaterialTheme.typography.headlineLarge,
-                )
-                Spacer(Modifier.height(25.dp))
-                Text(
-                    "En el sitio abre Envío de invitaciones → Conectar teléfono. Copia aquí la credencial."
+                Text("Sign in", style = MaterialTheme.typography.headlineLarge)
+                Spacer(Modifier.height(16.dp))
+                Text("Enter the username and single-use PIN shared by the administrator. PINs expire after 15 minutes.")
+                OutlinedTextField(
+                    username, { username = it }, label = { Text("Username") },
+                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 )
                 OutlinedTextField(
-                    base,
-                    { base = it },
-                    label = { Text("Servidor HTTPS") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    token,
-                    { token = it },
-                    label = { Text("Credencial del dispositivo") },
+                    pin, { pin = it.filter { c -> c in '0'..'9' }.take(8) },
+                    label = { Text("8-digit PIN") }, singleLine = true, enabled = !busy,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = { customServer = !customServer }, enabled = !busy) {
+                    Text("Server settings")
+                }
+                if (customServer) OutlinedTextField(
+                    base, { base = it }, label = { Text("HTTPS server") },
+                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth(),
                 )
                 Button(
                     onClick = {
                         task {
                             val normalized = base.trim().trimEnd('/')
-                            val clean = token.trim()
-                            val list = Api(normalized, clean).families()
-                            local.clear()
-                            vault.save(normalized, clean)
-                            families = list
+                            val sameUser = vault.token().isNotBlank() &&
+                                SignIn.userId(username) == myId() && normalized == vault.base()
+                            check(sameUser || local.pending().isEmpty()) {
+                                "Pending sending results belong to your previous login. Sign in with the same username and server to recover them."
+                            }
+                            val session = Api(normalized, "").signIn(username, pin)
+                            // Save immediately: the PIN has already been consumed. A failed
+                            // family refresh must not discard a successful sign-in.
+                            vault.save(normalized, session)
+                            if (!sameUser) {
+                                local.clear()
+                                families = emptyList()
+                            }
+                            pin = ""
                             connected = true
-                            online = true
-                            message = "Teléfono conectado"
+                            message = "Signed in"
+                            refresh()
                         }
                     },
-                    enabled = !busy,
+                    enabled = !busy && SignIn.validUsername(username) && SignIn.validPIN(pin),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Conectar")
+                    Text(if (busy) "Signing in…" else "Sign in")
                 }
+                Text("Need another PIN? Ask the administrator to select Generate new PIN next to your username.",
+                    Modifier.padding(top = 12.dp))
                 Text(message, Modifier.padding(top = 16.dp))
             }
             return
@@ -487,15 +516,20 @@ class MainActivity : ComponentActivity() {
                         if (local.pending().isNotEmpty()) {
                             message = "Sincroniza los cambios antes de desconectar"
                         } else {
-                            vault.clear()
-                            local.clear()
-                            connected = false
-                            families = emptyList()
+                            task {
+                                if (vault.token().startsWith("user_")) api().signOut()
+                                vault.clear()
+                                local.clear()
+                                connected = false
+                                online = false
+                                families = emptyList()
+                                message = "Signed out. Ask the administrator for a new PIN to sign in again."
+                            }
                         }
                     },
                     enabled = !batchActive && !busy,
                 ) {
-                    Text("Desconectar este teléfono")
+                    Text("Sign out")
                 }
             }
         }
