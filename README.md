@@ -60,3 +60,12 @@ Names and phone numbers are read locally on a worker thread, only after permissi
 Duplicate numbers are preserved across all app users, including formatted and legacy Mexican +521 numbers. Existing families retain their name, assignment, RSVP and sending history. Shared phone numbers represent one family. After a network interruption, use **Retry remaining**; completed numbers are safely skipped on the backend. Unknown results must never be treated as permission to send an invitation.
 
 Unit tests cover number normalization, country selection, duplicates and names; Contacts-provider/OEM permission screens and physical-phone selection should be checked on the target phone.
+
+### Contact import returns HTTP 404
+
+The installed app supports contact import, but the deployed server does not expose
+`POST /api/families/import`. Merging the backend PR alone does not deploy Lambda.
+In the birthday.invitation checkout, switch to main, pull the latest changes and
+run `deploy.bat` on Windows or `./deploy.sh` on Linux. Retry from the existing app
+after deployment. Version 1.2.1 displays the HTTP code and deployment guidance
+instead of the generic interrupted-import message.
