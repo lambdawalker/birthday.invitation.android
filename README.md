@@ -77,3 +77,12 @@ Local numbers start with an empty country code. Choose US +1 or Mexico +52 on
 each contact card, or type a code. There is no batch-wide country setting.
 Import requires resolving each local number first. To change a code already
 embedded in a phone number, edit that phone number directly.
+
+### Delete a family
+
+Assigned families have a Delete from roster button with explicit confirmation.
+Deletion removes the family from the shared server roster, including RSVP and
+sending history, and invalidates its invitation link. It never deletes the phone
+contact. Resolve pending/uncertain sends and sync local events first. Unassigned
+families can be claimed before deletion; another user's families cannot be deleted.
+Deploy the companion backend update (including DeleteItem IAM permission) first.

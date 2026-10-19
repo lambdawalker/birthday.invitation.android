@@ -24,7 +24,7 @@ class Api(private val base: String, private val token: String) {
         }
     }
 
-    suspend fun request(path: String, body: JSONObject? = null): JSONObject =
+    suspend fun request(path: String, body: JSONObject? = null, method: String? = null): JSONObject =
         withContext(Dispatchers.IO) {
             val c =
                 URI(base.trimEnd('/') + "/api" + path).toURL().openConnection() as HttpURLConnection
@@ -32,7 +32,7 @@ class Api(private val base: String, private val token: String) {
                 c.instanceFollowRedirects = false
                 c.connectTimeout = 15000
                 c.readTimeout = 20000
-                c.requestMethod = if (body == null) "GET" else "POST"
+                c.requestMethod = method ?: if (body == null) "GET" else "POST"
                 if (token.isNotBlank()) c.setRequestProperty("Authorization", "Bearer $token")
                 if (body != null) {
                     c.doOutput = true
@@ -75,6 +75,10 @@ class Api(private val base: String, private val token: String) {
             val row = results.getJSONObject(i)
             ContactImportResult(row.getInt("index"), row.getString("status"), row.optString("message"))
         }
+    }
+
+    suspend fun deleteFamily(id: String) {
+        request("/families/$id", method = "DELETE")
     }
 
     suspend fun families(): List<Family> {
