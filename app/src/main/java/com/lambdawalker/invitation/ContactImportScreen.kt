@@ -210,7 +210,7 @@ fun ContactImportScreen(
                                 throw e
                             } catch (e: ApiException) {
                                 if (e.status == 401) onUnauthorized()
-                                else note = "Import interrupted. Some contacts may already be added. Retry safely; existing numbers will be skipped."
+                                else note = contactImportError(e.status)
                             } catch (e: Exception) {
                                 note = "Connection interrupted. Retry safely; existing numbers will be skipped."
                             } finally {
