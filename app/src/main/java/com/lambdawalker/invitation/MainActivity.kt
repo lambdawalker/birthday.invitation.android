@@ -130,7 +130,11 @@ class MainActivity : ComponentActivity() {
         for (e in local.pending()) {
             val id = e.getString("id")
             val remote = api().families().find { it.id == id }
-            check(remote != null) { "Familia no encontrada" }
+            if (remote == null) {
+                // Deleted families must not leave late delivery callbacks blocking sync.
+                local.acknowledge(e.getString("eventId"))
+                continue
+            }
             if (remote.attemptId != e.getString("attemptId")) {
                 message =
                     "Cambio local pendiente de revisión: ${remote.name}. No se reenviará automáticamente."
@@ -674,7 +678,30 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun FamilyCard(f: Family) {
+        var confirmDelete by remember(f.id) { mutableStateOf(false) }
         val mine = f.assignedTo == myId()
+        val canDelete = mine && f.status !in listOf("sending", "uncertain", "whatsapp_opened") &&
+            local.pending().none { it.getString("id") == f.id }
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { if (!busy) confirmDelete = false },
+                title = { Text("Delete family from roster?") },
+                text = { Text("${f.name} will be removed from the shared roster. Their invitation link will stop working and their RSVP and sending history will be deleted. This cannot be undone. Your phone contact will remain unchanged.") },
+                confirmButton = {
+                    TextButton(enabled = canDelete && !busy && !batchActive, onClick = {
+                        task {
+                            api().deleteFamily(f.id)
+                            confirmDelete = false
+                            families = families.filter { it.id != f.id }
+                            local.cache(JSONArray(families.map { it.toJson() }).toString())
+                            refresh()
+                            message = "Family deleted from roster"
+                        }
+                    }) { Text("Delete family") }
+                },
+                dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = false }) { Text("Cancel") } },
+            )
+        }
         val enabled = !batchActive && !busy
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -724,6 +751,11 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Text("WhatsApp")
                             }
+                    }
+                }
+                if (mine) {
+                    TextButton(onClick = { confirmDelete = true }, enabled = enabled && canDelete && online) {
+                        Text("Delete from roster", color = MaterialTheme.colorScheme.error)
                     }
                 }
                 if (mine && f.status == "whatsapp_opened")
